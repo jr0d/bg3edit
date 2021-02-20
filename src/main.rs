@@ -58,7 +58,8 @@ fn main() {
 
     let mut rdr = Cursor::new(&data);
     let pak = read_pak(&mut rdr).expect("bad things");
-    println!("PAK: {:?}", pak)
+    println!("PAK: {:?}", pak);
+    println!("PAK: {:02x?}", pak);
 }
 
 fn read_pak<R: Read + Seek>(reader: &mut R) -> Result<PAK , std::io::Error> {
@@ -86,6 +87,5 @@ fn read_pak<R: Read + Seek>(reader: &mut R) -> Result<PAK , std::io::Error> {
         files: reader.read_u32::<LittleEndian>()?,
         zsize: reader.read_u32::<LittleEndian>()?,
     };
-
     Ok(pak)
 }
