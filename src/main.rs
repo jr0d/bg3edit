@@ -3,13 +3,11 @@ extern crate serde;
 
 use std::fs;
 use std::io::prelude::*;
-use std::io::{ErrorKind, SeekFrom, Cursor};
 use std::mem;
 
 use byteorder::{LittleEndian, ByteOrder, ReadBytesExt};
 use serde::{Serialize, Deserialize};
 
-static TARGET: &str = "C:\\Users\\Jared\\Documents\\Larian Studios\\Baldur's Gate 3\\PlayerProfiles\\Oracle\\Savegames\\Story\\AutoSave_0\\AutoSave_0.lsv";
 static MAGIC: [u8;4] = [0x4c, 0x53, 0x50, 0x4b]; // LSPK
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -26,15 +24,33 @@ pub struct PAKHeader {
 pub struct PAK {
     pub header: PAKHeader,
     pub files: u32,
-    pub zsize: u32,
+    pub table_zsize: u32,
+    pub archives: Vec<PAKFile>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PAKFile {
+    pub name: String,
+    pub offset: u64,
+    pub zsize: u64,
+    pub size: u64,
+    pub d1: u64,
+    pub crc: u32,
+    pub d2: u32,
+}
 
 fn main() {
-    println!("Hello, world!");
-    let data = match fs::read(TARGET) {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() != 2 {
+        println!("usage: bg3edit <target>");
+        std::process::exit(1);
+    }
+
+    let target = &args[1];
+    let data = match fs::read(target) {
         Ok(d) => d,
-        Err(e) => panic!("error reading {}: {:?}", TARGET, e)
+        Err(e) => panic!("error reading {}: {:?}", target, e)
     };
 
     if data.len() < mem::size_of::<PAKHeader>() {
@@ -44,7 +60,7 @@ fn main() {
     let mut id: [u8; 4] = [0, 0, 0, 0];
     id.copy_from_slice(&data[0..4]);
     let header = PAKHeader{
-        id: id,
+        id,
         version: LittleEndian::read_u32(&data[4..8]),
         table_offset: LittleEndian::read_u64(&data[8..16]) as usize
     };
@@ -56,7 +72,7 @@ fn main() {
     println!("HEADER:\n{:?}", header);
     println!("Files: {}, ZSIZE: {}", files, zsize);
 
-    let mut rdr = Cursor::new(&data);
+    let mut rdr = std::io::Cursor::new(&data);
     let pak = read_pak(&mut rdr).expect("bad things");
     println!("PAK: {:?}", pak);
     println!("PAK: {:02x?}", pak);
@@ -66,7 +82,8 @@ fn read_pak<R: Read + Seek>(reader: &mut R) -> Result<PAK , std::io::Error> {
     let mut id = [0u8, 0, 0, 0];
     match reader.read(&mut id) {
         Ok(n) => if n != 4 {
-            return Err(std::io::Error::new(ErrorKind::InvalidData, "header could not be read"))
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData, "header could not be read"))
             },
         Err(e) => return Err(e),
     };
@@ -75,17 +92,17 @@ fn read_pak<R: Read + Seek>(reader: &mut R) -> Result<PAK , std::io::Error> {
     }
 
     let header = PAKHeader{
-        id: id,
+        id,
         version: reader.read_u32::<LittleEndian>()?,
         table_offset: reader.read_u64::<LittleEndian>()? as usize,
     };
 
-    reader.seek(SeekFrom::Start(header.table_offset as u64))?;
+    reader.seek(std::io::SeekFrom::Start(header.table_offset as u64))?;
 
     let pak = PAK{
-        header: header,
+        header,
         files: reader.read_u32::<LittleEndian>()?,
-        zsize: reader.read_u32::<LittleEndian>()?,
+        table_zsize: reader.read_u32::<LittleEndian>()?,
     };
     Ok(pak)
 }
